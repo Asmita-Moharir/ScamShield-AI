@@ -14,9 +14,9 @@ import {
   CartesianGrid,
 } from "recharts";
 
-/* ---------------------------------------
-   API BASE URL FROM .env
---------------------------------------- */
+/* -----------------------------------
+   API URL
+----------------------------------- */
 const API = import.meta.env.VITE_API_URL;
 
 function App() {
@@ -25,16 +25,15 @@ function App() {
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
   const [jobText, setJobText] = useState("");
-  const [imageFile, setImageFile] = useState(null);
 
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const [history, setHistory] = useState([]);
 
-  /* ---------------------------------------
+  /* -----------------------------------
      LOAD HISTORY
-  --------------------------------------- */
+  ----------------------------------- */
   useEffect(() => {
     const saved = localStorage.getItem("scanHistory");
 
@@ -43,12 +42,12 @@ function App() {
     }
   }, []);
 
-  /* ---------------------------------------
+  /* -----------------------------------
      SAVE HISTORY
-  --------------------------------------- */
-  const saveHistory = (scanType, score, level) => {
+  ----------------------------------- */
+  const saveHistory = (type, score, level) => {
     const newItem = {
-      type: scanType,
+      type,
       score,
       level,
       time: new Date().toLocaleString(),
@@ -60,9 +59,9 @@ function App() {
     localStorage.setItem("scanHistory", JSON.stringify(updated));
   };
 
-  /* ---------------------------------------
+  /* -----------------------------------
      API CALLS
-  --------------------------------------- */
+  ----------------------------------- */
 
   const scanText = async () => {
     const res = await axios.post(`${API}/analyze`, {
@@ -91,16 +90,6 @@ function App() {
     saveHistory("Job", res.data.score, res.data.risk_level);
   };
 
-  const scanImage = async () => {
-    const formData = new FormData();
-    formData.append("file", imageFile);
-
-    const res = await axios.post(`${API}/scan-image`, formData);
-
-    setResult(res.data);
-    saveHistory("OCR", res.data.score, res.data.risk_level);
-  };
-
   const handleAnalyze = async () => {
     setLoading(true);
     setResult(null);
@@ -109,7 +98,6 @@ function App() {
       if (mode === "text") await scanText();
       if (mode === "url") await scanURL();
       if (mode === "job") await scanJob();
-      if (mode === "image") await scanImage();
     } catch (error) {
       console.log(error);
       alert("Backend error");
@@ -118,9 +106,9 @@ function App() {
     setLoading(false);
   };
 
-  /* ---------------------------------------
+  /* -----------------------------------
      CHART DATA
-  --------------------------------------- */
+  ----------------------------------- */
 
   const pieData = result
     ? [
@@ -134,10 +122,6 @@ function App() {
     score: item.score,
   }));
 
-  /* ---------------------------------------
-     CLEAR HISTORY
-  --------------------------------------- */
-
   const clearHistory = () => {
     localStorage.removeItem("scanHistory");
     setHistory([]);
@@ -145,11 +129,13 @@ function App() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-black via-gray-950 to-gray-900 text-white">
+
       {/* Glow */}
       <div className="absolute top-20 left-10 w-72 h-72 bg-green-500/10 blur-3xl rounded-full"></div>
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-emerald-400/10 blur-3xl rounded-full"></div>
 
       <div className="relative z-10">
+
         {/* Navbar */}
         <nav className="flex justify-between items-center px-8 py-5 border-b border-white/10">
           <h1 className="text-3xl font-bold text-green-400">
@@ -170,7 +156,7 @@ function App() {
           </h2>
 
           <p className="text-gray-400 mt-5 text-lg">
-            Scan text, URLs, fake jobs and screenshots.
+            Scan suspicious text, URLs and fake job offers.
           </p>
         </div>
 
@@ -179,12 +165,12 @@ function App() {
           <div className="bg-white/5 border border-white/10 rounded-3xl p-6">
 
             {/* Modes */}
-            <div className="grid md:grid-cols-4 gap-3 mb-5">
+            <div className="grid md:grid-cols-3 gap-3 mb-5">
+
               {[
                 ["text", "Text"],
                 ["url", "URL"],
                 ["job", "Job Scam"],
-                ["image", "OCR"],
               ].map(([key, label]) => (
                 <button
                   key={key}
@@ -201,9 +187,11 @@ function App() {
                   {label}
                 </button>
               ))}
+
             </div>
 
             {/* Inputs */}
+
             {mode === "text" && (
               <textarea
                 rows="8"
@@ -234,15 +222,6 @@ function App() {
               />
             )}
 
-            {mode === "image" && (
-              <input
-                type="file"
-                accept="image/*"
-                className="w-full bg-black/30 border border-gray-700 rounded-2xl p-4"
-                onChange={(e) => setImageFile(e.target.files[0])}
-              />
-            )}
-
             {/* Button */}
             <button
               onClick={handleAnalyze}
@@ -250,10 +229,11 @@ function App() {
             >
               {loading ? "Scanning..." : "Analyze Now"}
             </button>
+
           </div>
         </div>
 
-        {/* Result */}
+        {/* Results */}
         {result && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -267,6 +247,7 @@ function App() {
               </h3>
 
               <div className="grid md:grid-cols-2 gap-4 mb-6">
+
                 <div className="bg-black/30 rounded-2xl p-5">
                   <p className="text-gray-400">Risk Score</p>
                   <p className="text-5xl font-bold">
@@ -280,6 +261,25 @@ function App() {
                     {result.risk_level}
                   </p>
                 </div>
+
+              </div>
+
+              {/* Pie Chart */}
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      outerRadius={110}
+                      label
+                    >
+                      <Cell fill="#22c55e" />
+                      <Cell fill="#1f2937" />
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
 
               {/* Reasons */}
@@ -293,6 +293,7 @@ function App() {
                   </div>
                 ))}
               </div>
+
             </div>
           </motion.div>
         )}
@@ -327,7 +328,7 @@ function App() {
               </ResponsiveContainer>
             </div>
 
-            {/* History Cards */}
+            {/* Cards */}
             <div className="grid md:grid-cols-2 gap-4">
               {history.map((item, index) => (
                 <div
@@ -340,12 +341,14 @@ function App() {
 
                   <p className="mt-2">Risk Score: {item.score}%</p>
                   <p>Level: {item.level}</p>
+
                   <p className="text-gray-400 text-sm mt-2">
                     {item.time}
                   </p>
                 </div>
               ))}
             </div>
+
           </div>
         )}
 
