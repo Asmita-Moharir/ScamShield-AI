@@ -14,16 +14,16 @@ import os
 app = FastAPI(title="ScamShield AI Backend")
 
 # --------------------------------------------------
-# CORS FIX
+# FINAL CORS FIX FOR VERCEL + LOCALHOST
 # --------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"https://.*vercel\.app",
     allow_origins=[
         "http://localhost:5173",
-        "https://scam-shield-ai-mauve.vercel.app",
-        "https://scam-shield-7i6v7g64c-asmita-moharirs-projects.vercel.app",
+        "http://127.0.0.1:5173"
     ],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -66,11 +66,6 @@ def level(score):
     return "Low Risk"
 
 
-def contains_any(text, words):
-    text = text.lower()
-    return any(word in text for word in words)
-
-
 # --------------------------------------------------
 # TEXT SCAM DETECTOR
 # --------------------------------------------------
@@ -88,15 +83,12 @@ def analyze(data: TextInput):
         "money",
         "otp",
         "click",
-        "limited time",
-        "verify now",
-        "account blocked",
+        "verify",
+        "claim",
         "gift",
         "lottery",
-        "claim now",
-        "congratulations",
-        "password",
         "bank",
+        "password"
     ]
 
     for word in suspicious_words:
@@ -106,19 +98,18 @@ def analyze(data: TextInput):
 
     if re.search(r"http[s]?://", text):
         score += 20
-        reasons.append("Contains link")
+        reasons.append("Contains suspicious link")
 
     if len(text) < 8:
         score += 10
-        reasons.append("Very short suspicious message")
+        reasons.append("Very short suspicious text")
 
-    if score > 100:
-        score = 100
+    score = min(score, 100)
 
     return {
         "score": score,
         "risk_level": level(score),
-        "reasons": reasons if reasons else ["No major scam indicators found"],
+        "reasons": reasons if reasons else ["No major scam indicators found"]
     }
 
 
@@ -133,29 +124,27 @@ def scan_url(data: URLInput):
     reasons = []
 
     bad_tlds = [".xyz", ".top", ".click", ".ru", ".loan", ".tk"]
-    fake_keywords = [
+    fake_words = [
         "login",
         "verify",
         "secure",
         "update",
-        "bank",
         "gift",
-        "otp",
-        "wallet",
+        "bank",
         "paytm",
         "amazon",
         "gpay",
+        "wallet"
     ]
 
     parsed = urlparse(url)
     domain = parsed.netloc
 
     if not domain:
-        reasons.append("Invalid URL format")
         return {
             "score": 100,
             "risk_level": "High Risk",
-            "reasons": reasons,
+            "reasons": ["Invalid URL format"]
         }
 
     for tld in bad_tlds:
@@ -163,7 +152,7 @@ def scan_url(data: URLInput):
             score += 35
             reasons.append(f"Suspicious domain ending: {tld}")
 
-    for word in fake_keywords:
+    for word in fake_words:
         if word in domain:
             score += 10
             reasons.append(f"Contains phishing keyword: {word}")
@@ -174,15 +163,14 @@ def scan_url(data: URLInput):
 
     if len(domain) > 25:
         score += 10
-        reasons.append("Very long domain")
+        reasons.append("Long suspicious domain")
 
-    if score > 100:
-        score = 100
+    score = min(score, 100)
 
     return {
         "score": score,
         "risk_level": level(score),
-        "reasons": reasons if reasons else ["Looks relatively safe"],
+        "reasons": reasons if reasons else ["Looks relatively safe"]
     }
 
 
@@ -196,40 +184,38 @@ def scan_job(data: TextInput):
     score = 0
     reasons = []
 
-    job_flags = [
+    phrases = [
         "registration fee",
         "pay fee",
+        "security deposit",
         "immediate joining",
         "whatsapp only",
         "no interview",
         "guaranteed job",
         "earn daily",
-        "work from home no skills",
-        "processing fee",
-        "security deposit",
+        "work from home no skills"
     ]
 
-    for flag in job_flags:
-        if flag in text:
+    for item in phrases:
+        if item in text:
             score += 15
-            reasons.append(f"Contains suspicious phrase: {flag}")
+            reasons.append(f"Contains suspicious phrase: {item}")
 
-    if "salary" in text and "experience not required" in text:
+    if "salary" in text and "no experience" in text:
         score += 20
-        reasons.append("Unrealistic salary + no experience combo")
+        reasons.append("Unrealistic salary + no experience")
 
-    if score > 100:
-        score = 100
+    score = min(score, 100)
 
     return {
         "score": score,
         "risk_level": level(score),
-        "reasons": reasons if reasons else ["No major fake job indicators found"],
+        "reasons": reasons if reasons else ["No major fake job indicators found"]
     }
 
 
 # --------------------------------------------------
-# OCR IMAGE SCAN (LOCAL ONLY / MAY FAIL ON RENDER)
+# OCR ROUTE (LOCAL USE ONLY)
 # --------------------------------------------------
 @app.post("/scan-image")
 async def scan_image(file: UploadFile = File(...)):
@@ -238,42 +224,39 @@ async def scan_image(file: UploadFile = File(...)):
         image = Image.open(io.BytesIO(image_bytes))
 
         extracted_text = pytesseract.image_to_string(image)
-
         text = extracted_text.lower()
 
         score = 0
         reasons = []
 
-        suspicious_words = [
+        words = [
             "urgent",
             "winner",
-            "free",
-            "money",
             "otp",
-            "click",
             "verify",
             "claim",
+            "money",
+            "gift"
         ]
 
-        for word in suspicious_words:
+        for word in words:
             if word in text:
                 score += 12
                 reasons.append(f"OCR found suspicious word: {word}")
 
-        if score > 100:
-            score = 100
+        score = min(score, 100)
 
         return {
             "score": score,
             "risk_level": level(score),
-            "reasons": reasons if reasons else ["No scam phrases found in image"],
-            "extracted_text": extracted_text,
+            "reasons": reasons if reasons else ["No scam indicators found"],
+            "extracted_text": extracted_text
         }
 
     except Exception as e:
         return {
             "score": 0,
             "risk_level": "Unavailable",
-            "reasons": [f"OCR unavailable on hosted server: {str(e)}"],
-            "extracted_text": "",
+            "reasons": [f"OCR unavailable: {str(e)}"],
+            "extracted_text": ""
         }
