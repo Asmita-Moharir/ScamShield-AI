@@ -2,43 +2,38 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from urllib.parse import urlparse
-import pytesseract
 from PIL import Image
+import pytesseract
 import io
 import re
 import os
 
-# --------------------------------------------------
-# FASTAPI APP
-# --------------------------------------------------
+# ==================================================
+# APP
+# ==================================================
 app = FastAPI(title="ScamShield AI Backend")
 
-# --------------------------------------------------
-# FINAL CORS FIX FOR VERCEL + LOCALHOST
-# --------------------------------------------------
+# ==================================================
+# FINAL SIMPLE CORS FIX
+# ==================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https://.*vercel\.app",
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-    ],
-    allow_credentials=False,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --------------------------------------------------
-# WINDOWS OCR PATH (LOCAL ONLY)
-# --------------------------------------------------
+# ==================================================
+# OCR PATH (WINDOWS LOCAL ONLY)
+# ==================================================
 if os.name == "nt":
     pytesseract.pytesseract.tesseract_cmd = (
         r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     )
 
-# --------------------------------------------------
-# REQUEST MODELS
-# --------------------------------------------------
+# ==================================================
+# MODELS
+# ==================================================
 class TextInput(BaseModel):
     text: str
 
@@ -47,18 +42,10 @@ class URLInput(BaseModel):
     url: str
 
 
-# --------------------------------------------------
-# ROOT ROUTE
-# --------------------------------------------------
-@app.get("/")
-def home():
-    return {"message": "ScamShield AI Backend Running"}
-
-
-# --------------------------------------------------
+# ==================================================
 # HELPERS
-# --------------------------------------------------
-def level(score):
+# ==================================================
+def risk_level(score):
     if score >= 70:
         return "High Risk"
     elif score >= 40:
@@ -66,9 +53,17 @@ def level(score):
     return "Low Risk"
 
 
-# --------------------------------------------------
+# ==================================================
+# HOME
+# ==================================================
+@app.get("/")
+def home():
+    return {"message": "ScamShield AI Backend Running"}
+
+
+# ==================================================
 # TEXT SCAM DETECTOR
-# --------------------------------------------------
+# ==================================================
 @app.post("/analyze")
 def analyze(data: TextInput):
     text = data.text.lower()
@@ -88,7 +83,9 @@ def analyze(data: TextInput):
         "gift",
         "lottery",
         "bank",
-        "password"
+        "password",
+        "limited time",
+        "account blocked",
     ]
 
     for word in suspicious_words:
@@ -100,22 +97,22 @@ def analyze(data: TextInput):
         score += 20
         reasons.append("Contains suspicious link")
 
-    if len(text) < 8:
+    if len(text.strip()) < 8:
         score += 10
-        reasons.append("Very short suspicious text")
+        reasons.append("Very short suspicious message")
 
     score = min(score, 100)
 
     return {
         "score": score,
-        "risk_level": level(score),
-        "reasons": reasons if reasons else ["No major scam indicators found"]
+        "risk_level": risk_level(score),
+        "reasons": reasons if reasons else ["No major scam indicators found"],
     }
 
 
-# --------------------------------------------------
+# ==================================================
 # URL PHISHING DETECTOR
-# --------------------------------------------------
+# ==================================================
 @app.post("/scan-url")
 def scan_url(data: URLInput):
     url = data.url.lower()
@@ -134,7 +131,7 @@ def scan_url(data: URLInput):
         "paytm",
         "amazon",
         "gpay",
-        "wallet"
+        "wallet",
     ]
 
     parsed = urlparse(url)
@@ -144,7 +141,7 @@ def scan_url(data: URLInput):
         return {
             "score": 100,
             "risk_level": "High Risk",
-            "reasons": ["Invalid URL format"]
+            "reasons": ["Invalid URL format"],
         }
 
     for tld in bad_tlds:
@@ -163,20 +160,20 @@ def scan_url(data: URLInput):
 
     if len(domain) > 25:
         score += 10
-        reasons.append("Long suspicious domain")
+        reasons.append("Very long domain")
 
     score = min(score, 100)
 
     return {
         "score": score,
-        "risk_level": level(score),
-        "reasons": reasons if reasons else ["Looks relatively safe"]
+        "risk_level": risk_level(score),
+        "reasons": reasons if reasons else ["Looks relatively safe"],
     }
 
 
-# --------------------------------------------------
+# ==================================================
 # JOB SCAM DETECTOR
-# --------------------------------------------------
+# ==================================================
 @app.post("/scan-job")
 def scan_job(data: TextInput):
     text = data.text.lower()
@@ -193,7 +190,7 @@ def scan_job(data: TextInput):
         "no interview",
         "guaranteed job",
         "earn daily",
-        "work from home no skills"
+        "work from home no skills",
     ]
 
     for item in phrases:
@@ -209,14 +206,14 @@ def scan_job(data: TextInput):
 
     return {
         "score": score,
-        "risk_level": level(score),
-        "reasons": reasons if reasons else ["No major fake job indicators found"]
+        "risk_level": risk_level(score),
+        "reasons": reasons if reasons else ["No major fake job indicators found"],
     }
 
 
-# --------------------------------------------------
-# OCR ROUTE (LOCAL USE ONLY)
-# --------------------------------------------------
+# ==================================================
+# OCR IMAGE SCAN
+# ==================================================
 @app.post("/scan-image")
 async def scan_image(file: UploadFile = File(...)):
     try:
@@ -236,7 +233,7 @@ async def scan_image(file: UploadFile = File(...)):
             "verify",
             "claim",
             "money",
-            "gift"
+            "gift",
         ]
 
         for word in words:
@@ -248,9 +245,9 @@ async def scan_image(file: UploadFile = File(...)):
 
         return {
             "score": score,
-            "risk_level": level(score),
+            "risk_level": risk_level(score),
             "reasons": reasons if reasons else ["No scam indicators found"],
-            "extracted_text": extracted_text
+            "extracted_text": extracted_text,
         }
 
     except Exception as e:
@@ -258,5 +255,5 @@ async def scan_image(file: UploadFile = File(...)):
             "score": 0,
             "risk_level": "Unavailable",
             "reasons": [f"OCR unavailable: {str(e)}"],
-            "extracted_text": ""
+            "extracted_text": "",
         }
